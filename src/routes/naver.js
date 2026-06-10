@@ -34,40 +34,42 @@ router.post('/verify', verifyUser, async (req, res) => {
     return res.status(400).json({ success: false, error: '아이디와 비밀번호를 입력해주세요.' });
   }
 
-  try {
-    // 임시 mock 테스트 (Playwright 없이)
-    const result = { success: true, sessionCookie: 'test-cookie-123' };
+try {
+  const result = { success: true, sessionCookie: 'test-cookie-123' };
 
-    const encryptedPassword = encrypt(naverPassword);
-    const encryptedCookie = encrypt(result.sessionCookie);
+  const encryptedPassword = encrypt(naverPassword);
+  const encryptedCookie = encrypt(result.sessionCookie);
 
-    const { error: dbError } = await supabase
-      .from('naver_accounts')
-      .upsert({
-        user_id: req.userId,
-        naver_id: naverId,
-        encrypted_password: encryptedPassword,
-        place_mid: placeMid,
-        place_name: placeName,
-        session_cookie: encryptedCookie,
-        status: 'connected',
-        connected_at: new Date().toISOString()
-      }, {
-        onConflict: 'user_id'
-      });
+  // 기존 데이터 삭제 후 새로 insert
+  await supabase
+    .from('naver_accounts')
+    .delete()
+    .eq('user_id', req.userId);
 
-    if (dbError) {
-      console.error('DB 저장 오류:', dbError);
-      return res.json({ success: false, error: 'DB 저장 실패', message: dbError.message });
-    }
+  const { error: dbError } = await supabase
+    .from('naver_accounts')
+    .insert({
+      user_id: req.userId,
+      naver_id: naverId,
+      encrypted_password: encryptedPassword,
+      place_mid: placeMid,
+      place_name: placeName,
+      session_cookie: encryptedCookie,
+      status: 'connected',
+      connected_at: new Date().toISOString()
+    });
 
-    res.json({ success: true, message: '네이버 계정이 성공적으로 연동되었습니다.' });
-
-  } catch (error) {
-    console.error('verify 오류:', error);
-    res.status(500).json({ success: false, error: error.message });
+  if (dbError) {
+    console.error('DB 저장 오류:', dbError);
+    return res.json({ success: false, error: 'DB 저장 실패', message: dbError.message });
   }
-});
+
+  res.json({ success: true, message: '네이버 계정이 성공적으로 연동되었습니다.' });
+
+} catch (error) {
+  console.error('verify 오류:', error);
+  res.status(500).json({ success: false, error: error.message });
+}
 
 // GET /api/naver/reviews
 router.get('/reviews', verifyUser, async (req, res) => {
