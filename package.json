@@ -1,0 +1,24 @@
+{
+  "name": "naver-review-server",
+  "version": "1.0.0",
+  "description": "식당코치 AI - 네이버 스마트플레이스 리뷰 자동화 서버",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "playwright": "^1.40.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "@supabase/supabase-js": "^2.38.0",
+    "crypto-js": "^4.2.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
