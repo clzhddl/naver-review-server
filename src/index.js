@@ -1,37 +1,11 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-
-const naverRoutes = require('./routes/naver');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// 미들웨어
-app.use(cors({
-  origin: [
-    'https://placecoachai.com',
-    'https://www.placecoachai.com',
-    process.env.LOVABLE_URL || 'http://localhost:5173'
-  ],
-  credentials: true
-}));
-app.use(express.json());
-
-// 헬스체크
-app.get('/', (req, res) => {
-  res.json({ status: 'ok', message: '식당코치 AI 네이버 자동화 서버 🚀' });
-});
-
-// 라우트
-app.use('/api/naver', naverRoutes);
-
-// 에러 핸들러
-app.use((err, req, res, next) => {
-  console.error('서버 오류:', err);
-  res.status(500).json({ success: false, error: err.message });
-});
-
-app.listen(PORT, () => {
-  console.log(`✅ 서버 실행 중: http://localhost:${PORT}`);
-});
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "node src/index.js",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3
+  }
+}
