@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
 const CryptoJS = require('crypto-js');
+const { naverLogin, fetchNaverReviews, postNaverReply } = require('../services/naverAutomation');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -24,6 +25,9 @@ async function verifyUser(req, res, next) {
   next();
 }
 
+// ─────────────────────────────────────────
+// POST /api/naver/verify
+// ─────────────────────────────────────────
 router.post('/verify', verifyUser, async (req, res) => {
   console.log('verify 요청 받음:', req.body);
   const { naverId, naverPassword, placeMid, placeName } = req.body;
@@ -33,8 +37,15 @@ router.post('/verify', verifyUser, async (req, res) => {
   }
 
   try {
+    const result = await naverLogin(naverId, naverPassword);
+    console.log('로그인 결과:', result.success, result.error || '');
+
+    if (!result.success) {
+      return res.json(result);
+    }
+
     const encryptedPassword = encrypt(naverPassword);
-    const encryptedCookie = encrypt('test-cookie-123');
+    const encryptedCookie = encrypt(result.sessionCookie);
 
     await supabase.from('naver_accounts').delete().eq('user_id', req.userId);
 
@@ -64,28 +75,48 @@ router.post('/verify', verifyUser, async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────
+// GET /api/naver/reviews
+// ─────────────────────────────────────────
 router.get('/reviews', verifyUser, async (req, res) => {
   try {
-    const mockReviews = [
-      {
-        reviewId: 'review_1',
-        reviewerName: '테스트고객',
-        rating: 5,
-        content: '음식이 정말 맛있었어요!',
-        reviewDate: '2024-01-15',
-        hasReply: false
-      },
-      {
-        reviewId: 'review_2',
-        reviewerName: '방문자',
-        rating: 4,
-        content: '서비스가 친절했습니다.',
-        reviewDate: '2024-01-14',
-        hasReply: false
-      }
-    ];
+    const { data: account, error: accountError } = await supabase
+      .from('naver_accounts')
+      .select('*')
+      .eq('user_id', req.userId)
+      .single();
 
-    res.json({ success: true, reviews: mockReviews });
+    if (accountError || !account) {
+      return res.json({ success: false, error: 'ACCOUNT_NOT_FOUND', message: '연동된 네이버 계정이 없습니다.' });
+    }
+
+    const sessionCookie = decrypt(account.session_cookie);
+    let result = await fetchNaverReviews(sessionCookie, account.place_mid);
+    console.log('리뷰 조회 결과:', result.success, result.error || '', result.reviews?.length || 0);
+
+    if (!result.success && result.error === 'SESSION_EXPIRED') {
+      const naverPassword = decrypt(account.encrypted_password);
+      const loginResult = await naverLogin(account.naver_id, naverPassword);
+
+      if (loginResult.success) {
+        await supabase
+          .from('naver_accounts')
+          .update({ session_cookie: encrypt(loginResult.sessionCookie), status: 'connected' })
+          .eq('user_id', req.userId);
+
+        result = await fetchNaverReviews(loginResult.sessionCookie, account.place_mid);
+      } else {
+        await supabase.from('naver_accounts').update({ status: 'expired' }).eq('user_id', req.userId);
+        return res.json({ success: false, error: 'SESSION_EXPIRED', message: '세션이 만료되었습니다. 다시 연동해주세요.' });
+      }
+    }
+
+    if (!result.success) {
+      return res.json(result);
+    }
+
+    await saveReviewsToDb(req.userId, account.id, result.reviews);
+    res.json(result);
 
   } catch (error) {
     console.error('reviews 오류:', error);
@@ -93,6 +124,9 @@ router.get('/reviews', verifyUser, async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────
+// POST /api/naver/reply
+// ─────────────────────────────────────────
 router.post('/reply', verifyUser, async (req, res) => {
   const { reviewId, replyContent, supabaseReviewId } = req.body;
 
@@ -101,22 +135,57 @@ router.post('/reply', verifyUser, async (req, res) => {
   }
 
   try {
-    if (supabaseReviewId) {
+    const { data: account } = await supabase
+      .from('naver_accounts')
+      .select('*')
+      .eq('user_id', req.userId)
+      .single();
+
+    if (!account) {
+      return res.json({ success: false, error: '연동된 네이버 계정이 없습니다.' });
+    }
+
+    const sessionCookie = decrypt(account.session_cookie);
+    const result = await postNaverReply(sessionCookie, account.place_mid, reviewId, replyContent);
+
+    if (result.success && supabaseReviewId) {
       await supabase
         .from('naver_reviews')
-        .update({
-          reply_content: replyContent,
-          reply_status: 'published'
-        })
+        .update({ reply_content: replyContent, reply_status: 'published' })
         .eq('id', supabaseReviewId);
     }
 
-    res.json({ success: true, message: '답글이 성공적으로 등록되었습니다.' });
+    res.json(result);
 
   } catch (error) {
     console.error('reply 오류:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// ─────────────────────────────────────────
+async function saveReviewsToDb(userId, accountId, reviews) {
+  for (const review of reviews) {
+    const { data: existing } = await supabase
+      .from('naver_reviews')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('review_source_id', review.reviewId)
+      .single();
+
+    if (!existing) {
+      await supabase.from('naver_reviews').insert({
+        user_id: userId,
+        naver_account_id: accountId,
+        reviewer_name: review.reviewerName,
+        rating: review.rating,
+        content: review.content,
+        review_date: review.reviewDate,
+        review_source_id: review.reviewId,
+        reply_status: review.hasReply ? 'published' : 'pending'
+      });
+    }
+  }
+}
 
 module.exports = router;
