@@ -41,6 +41,9 @@ async function naverLogin(naverId, naverPassword) {
     });
 
     // 아이디 입력
+    await page.screenshot({ path: '/tmp/before_login.png' });
+    console.log('현재 페이지 타이틀:', await page.title());
+    console.log('id 필드 존재:', await page.$('#id') !== null);
     await page.click('#id');
     await page.keyboard.type(naverId, { delay: 80 });
     await page.waitForTimeout(500);
@@ -53,6 +56,7 @@ async function naverLogin(naverId, naverPassword) {
     // 로그인 버튼 클릭
     await page.click('#log\\.login');
     await page.waitForTimeout(3000);
+    await page.screenshot({ path: '/tmp/after_login.png' });
 
     const currentUrl = page.url();
     console.log('로그인 후 URL:', currentUrl);
