@@ -34,7 +34,9 @@ async function naverLogin(naverId, naverPassword) {
 
   try {
     console.log('🔐 네이버 로그인 시작...');
-
+console.log('로그인 후 URL:', currentUrl);
+    const pageText = await page.evaluate(() => document.body.innerText.slice(0, 500));
+    console.log('페이지 내용:', pageText);
     await page.goto('https://nid.naver.com/nidlogin.login', {
       waitUntil: 'networkidle',
       timeout: 30000
