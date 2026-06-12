@@ -1,6 +1,5 @@
 const { chromium } = require('playwright');
 
-// 브라우저 인스턴스 재사용 (세션 유지)
 let browserInstance = null;
 
 async function getBrowser() {
@@ -34,18 +33,17 @@ async function naverLogin(naverId, naverPassword) {
 
   try {
     console.log('🔐 네이버 로그인 시작...');
-console.log('로그인 후 URL:', currentUrl);
-    const pageText = await page.evaluate(() => document.body.innerText.slice(0, 500));
-    console.log('페이지 내용:', pageText);
+
     await page.goto('https://nid.naver.com/nidlogin.login', {
       waitUntil: 'networkidle',
       timeout: 30000
     });
 
-    // 아이디 입력
     await page.screenshot({ path: '/tmp/before_login.png' });
     console.log('현재 페이지 타이틀:', await page.title());
     console.log('id 필드 존재:', await page.$('#id') !== null);
+
+    // 아이디 입력
     await page.click('#id');
     await page.keyboard.type(naverId, { delay: 80 });
     await page.waitForTimeout(500);
@@ -62,6 +60,9 @@ console.log('로그인 후 URL:', currentUrl);
 
     const currentUrl = page.url();
     console.log('로그인 후 URL:', currentUrl);
+
+    const pageText = await page.evaluate(() => document.body.innerText.slice(0, 500));
+    console.log('페이지 내용:', pageText);
 
     // 2단계 인증 또는 캡차 감지
     if (currentUrl.includes('captcha') || currentUrl.includes('challenge')) {
@@ -121,7 +122,6 @@ async function fetchNaverReviews(sessionCookie, placeMid) {
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
   });
 
-  // 저장된 쿠키 적용
   const cookieArray = sessionCookie.split('; ').map(pair => {
     const [name, ...rest] = pair.split('=');
     return {
@@ -138,11 +138,9 @@ async function fetchNaverReviews(sessionCookie, placeMid) {
   try {
     console.log('📋 리뷰 목록 가져오기...');
 
-    // 스마트플레이스 사장님 센터 리뷰 페이지
     const reviewUrl = `https://smartplace.naver.com/places/${placeMid}/reviews`;
     await page.goto(reviewUrl, { waitUntil: 'networkidle', timeout: 30000 });
 
-    // 로그인 확인
     if (page.url().includes('login')) {
       await context.close();
       return { success: false, error: 'SESSION_EXPIRED', message: '세션이 만료되었습니다. 다시 로그인해주세요.' };
@@ -150,11 +148,8 @@ async function fetchNaverReviews(sessionCookie, placeMid) {
 
     await page.waitForTimeout(2000);
 
-    // 리뷰 데이터 추출
     const reviews = await page.evaluate(() => {
       const reviewItems = [];
-      
-      // 리뷰 카드 선택 (스마트플레이스 구조에 맞게)
       const cards = document.querySelectorAll('[class*="ReviewItem"], [class*="review_item"], .review_list_item');
       
       cards.forEach((card, index) => {
@@ -226,14 +221,12 @@ async function postNaverReply(sessionCookie, placeMid, reviewId, replyContent) {
 
     await page.waitForTimeout(2000);
 
-    // 해당 리뷰 찾기
     const reviewCard = await page.$(`[data-review-id="${reviewId}"]`);
     if (!reviewCard) {
       await context.close();
       return { success: false, error: 'REVIEW_NOT_FOUND', message: '리뷰를 찾을 수 없습니다.' };
     }
 
-    // 답글 버튼 클릭
     const replyBtn = await reviewCard.$('[class*="reply_btn"], button[class*="reply"], .btn_reply');
     if (!replyBtn) {
       await context.close();
@@ -243,7 +236,6 @@ async function postNaverReply(sessionCookie, placeMid, reviewId, replyContent) {
     await replyBtn.click();
     await page.waitForTimeout(1000);
 
-    // 답글 입력창에 텍스트 입력
     const textarea = await page.$('textarea[class*="reply"], [class*="reply_input"] textarea');
     if (!textarea) {
       await context.close();
@@ -254,7 +246,6 @@ async function postNaverReply(sessionCookie, placeMid, reviewId, replyContent) {
     await textarea.fill(replyContent);
     await page.waitForTimeout(500);
 
-    // 등록 버튼 클릭
     const submitBtn = await page.$('button[class*="submit"], button[class*="register"], .btn_submit');
     if (submitBtn) {
       await submitBtn.click();
