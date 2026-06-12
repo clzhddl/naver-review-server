@@ -45,17 +45,14 @@ async function naverLogin(naverId, naverPassword) {
     console.log('현재 페이지 타이틀:', await page.title());
     console.log('id 필드 존재:', await page.$('#id') !== null);
 
-    // 아이디 입력
     await page.click('#id');
     await page.keyboard.type(naverId, { delay: 80 });
     await page.waitForTimeout(500);
 
-    // 비밀번호 입력
     await page.click('#pw');
     await page.keyboard.type(naverPassword, { delay: 80 });
     await page.waitForTimeout(500);
 
-    // 로그인 버튼 클릭
     await page.click('#log\\.login');
     await page.waitForTimeout(3000);
     await page.screenshot({ path: '/tmp/after_login.png' });
@@ -66,7 +63,6 @@ async function naverLogin(naverId, naverPassword) {
     const pageText = await page.evaluate(() => document.body.innerText.slice(0, 500));
     console.log('페이지 내용:', pageText);
 
-    // 2단계 인증 또는 캡차 감지
     if (currentUrl.includes('captcha') || currentUrl.includes('challenge')) {
       await context.close();
       return {
@@ -85,13 +81,11 @@ async function naverLogin(naverId, naverPassword) {
       };
     }
 
-    // 기기 등록 팝업 처리 (나중에 묻기)
     try {
       const skipBtn = await page.$('text=나중에 등록하기');
       if (skipBtn) await skipBtn.click();
     } catch (e) {}
 
-    // 쿠키 저장
     const cookies = await context.cookies();
     const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
 
@@ -266,4 +260,65 @@ async function postNaverReply(sessionCookie, placeMid, reviewId, replyContent) {
   }
 }
 
-module.exports = { naverLogin, fetchNaverReviews, postNaverReply };
+// ─────────────────────────────────────────
+// 4. 네이버 블로그 글 작성 & 발행 (테스트: 접근 확인용)
+// ─────────────────────────────────────────
+async function postNaverBlog(naverId, naverPassword, title, content) {
+  const loginResult = await naverLogin(naverId, naverPassword);
+
+  if (!loginResult.success) {
+    return loginResult;
+  }
+
+  const browser = await getBrowser();
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+  });
+
+  const cookieArray = loginResult.sessionCookie.split('; ').map(pair => {
+    const [name, ...rest] = pair.split('=');
+    return {
+      name: name.trim(),
+      value: rest.join('='),
+      domain: '.naver.com',
+      path: '/'
+    };
+  });
+
+  await context.addCookies(cookieArray);
+  const page = await context.newPage();
+
+  try {
+    console.log('📝 네이버 블로그 글쓰기 페이지 이동...');
+
+    await page.goto('https://blog.naver.com/GoBlogWrite.naver', {
+      waitUntil: 'networkidle',
+      timeout: 30000
+    });
+
+    await page.waitForTimeout(3000);
+    console.log('블로그 페이지 URL:', page.url());
+    console.log('블로그 페이지 타이틀:', await page.title());
+
+    await page.screenshot({ path: '/tmp/blog_write.png' });
+
+    const blogPageText = await page.evaluate(() => document.body.innerText.slice(0, 300));
+    console.log('블로그 페이지 내용:', blogPageText);
+
+    const resultUrl = page.url();
+    await context.close();
+
+    return {
+      success: true,
+      message: '블로그 글쓰기 페이지 접근 테스트 완료',
+      currentUrl: resultUrl
+    };
+
+  } catch (error) {
+    await context.close();
+    console.error('블로그 작성 오류:', error);
+    return { success: false, error: 'BLOG_POST_ERROR', message: error.message };
+  }
+}
+
+module.exports = { naverLogin, fetchNaverReviews, postNaverReply, postNaverBlog };
