@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
 const CryptoJS = require('crypto-js');
-const { naverLogin, fetchNaverReviews, postNaverReply } = require('../services/naverAutomation');
+const { naverLogin, fetchNaverReviews, postNaverReply, postNaverBlog } = require('../services/naverAutomation');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -159,6 +159,26 @@ router.post('/reply', verifyUser, async (req, res) => {
 
   } catch (error) {
     console.error('reply 오류:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ─────────────────────────────────────────
+// POST /api/naver/blog
+// 네이버 블로그 글 작성 테스트
+// ─────────────────────────────────────────
+router.post('/blog', verifyUser, async (req, res) => {
+  const { naverId, naverPassword, title, content } = req.body;
+
+  if (!naverId || !naverPassword || !title || !content) {
+    return res.status(400).json({ success: false, error: '필수 정보가 누락되었습니다.' });
+  }
+
+  try {
+    const result = await postNaverBlog(naverId, naverPassword, title, content);
+    res.json(result);
+  } catch (error) {
+    console.error('blog 오류:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
