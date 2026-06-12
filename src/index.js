@@ -7,13 +7,6 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors({
-  origin: [
-    'https://placecoachai.com',
-    'https://www.placecoachai.com',
-    process.env.LOVABLE_URL || 'http://localhost:5173'
-  ],
-  credentials: true
-}));
 
 app.use(express.json());
 
